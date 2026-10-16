@@ -181,7 +181,7 @@ export function generateAutoFixSuggestions(errorCategory: ModelValidationError):
                 action: "Try alternative ports",
                 steps: [
                     "1. Check if llama.cpp server is running on a different port",
-                    "2. Common ports: 1234, 8080, 11434",
+                    "2. Common ports: 1234, 9931, 8080, 11434",
                     "3. Update your OpenCode configuration with the correct port"
                 ],
                 automated: false
@@ -190,7 +190,7 @@ export function generateAutoFixSuggestions(errorCategory: ModelValidationError):
                 action: "Try alternative ports",
                 steps: [
                     "1. Check if llama.cpp server is running on a different port",
-                    "2. Common ports: 1234, 8080, 11434",
+                    "2. Common ports: 1234, 9931, 8080, 11434",
                     "3. Update your OpenCode configuration with the correct port"
                 ],
                 automated: false

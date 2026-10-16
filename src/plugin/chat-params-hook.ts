@@ -1,82 +1,72 @@
-import type {Plugin} from "@opencode/plugin"
-
-type PluginContext = Plugin.Context
+import type {Plugin} from '@opencode/plugin'
 import {getLoadedModels} from './get-loaded-models'
-import {normalizeBaseURL} from '../utils/llama-cpp-api'
+import {getLlamaBaseURL} from './llama-state'
+import {detectToolSupport} from './tool-support'
 import {categorizeError, retryWithBackoff} from '../utils'
 import {log} from '../utils/log'
 
-export async function createChatParamsHook(ctx: PluginContext): Promise<(() => Promise<void>) | void> {
-    // Register session context hook for model validation
-    const registration = await ctx.session.hook("context", async (event) => {
+const PROVIDER_ID = 'llama.cpp'
+const FALLBACK_BASE_URL = 'http://127.0.0.1:1234'
+
+export async function createChatParamsHook(ctx: Plugin.Context): Promise<(() => Promise<void>) | void> {
+    // Registered for the agent loop only. Compaction/title/generate are separate
+    // hooks and do not need model-load validation.
+    const registration = await ctx.session.hook('context', async (event) => {
         const modelID = event.model?.id
         const providerID = event.model?.providerID
 
-        // Only validate llama.cpp models
-        if (providerID !== 'llama.cpp' || !modelID) {
+        if (providerID !== PROVIDER_ID || !modelID) {
             return
         }
 
         try {
-            // Get base URL and original model ID from catalog
-            const providers = await ctx.catalog.provider.list()
-            const provider = providers.data?.find((p: any) => p.id === 'llama.cpp')
+            const baseURL = getLlamaBaseURL() ?? FALLBACK_BASE_URL
 
-            if (!provider) {
-                log.warn("Provider not found in catalog")
-                return
-            }
+            // Learn tool support for the model actually in use. Detached and
+            // cached, so it never delays this request and only ever probes one
+            // model at a time.
+            detectToolSupport(ctx, baseURL, modelID)
 
-            const baseURL = normalizeBaseURL(
-                (provider as any).settings?.baseURL || "http://127.0.0.1:1234"
-            )
-
-            // Validate model is loaded with retry logic
             const validationResult = await retryWithBackoff(
                 async () => {
                     const loadedModels = await getLoadedModels(baseURL)
-                    const isModelLoaded = loadedModels.includes(modelID)
-
-                    if (!isModelLoaded) {
+                    if (!loadedModels.includes(modelID)) {
                         throw new Error(`Model '${modelID}' not loaded`)
                     }
-
                     return loadedModels
                 },
                 2, // Max 2 retries
-                500 // 500ms base delay
+                500, // 500ms base delay
             )
 
             if (!validationResult.success) {
-                // Model not loaded - add warning to context
-                const errorCategory = categorizeError(validationResult.error || "Validation failed", {
+                const errorCategory = categorizeError(validationResult.error || 'Validation failed', {
                     baseURL,
-                    modelId: modelID
+                    modelId: modelID,
                 })
 
-                log.warn("Model validation failed", {
+                log.warn('Model validation failed', {
                     model: modelID,
                     error: validationResult.error,
                     errorType: errorCategory.type,
                     severity: errorCategory.severity,
-                    baseURL
+                    baseURL,
                 })
 
-                // Add system message warning about model status
+                // Warn rather than block: llama.cpp may be mid-load.
                 event.system.push({
-                    type: "text",
+                    type: 'text',
                     text: `[llama.cpp warning] Model '${modelID}' is not currently loaded on the llama.cpp server at ${baseURL}. ` +
-                          `The request may fail. Error: ${errorCategory.message}`
+                        `The request may fail. Error: ${errorCategory.message}`,
                 })
             } else {
                 log.debug(`Model '${modelID}' validated successfully`)
             }
         } catch (error) {
-            log.error("Model validation error", {error: String(error)})
+            log.error('Model validation error', {error: String(error)})
         }
     })
 
-    // Return cleanup function
     return async () => {
         await registration.dispose()
     }

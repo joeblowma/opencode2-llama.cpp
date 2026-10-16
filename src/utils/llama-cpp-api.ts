@@ -1,7 +1,18 @@
-import type {LlamaCppModel, LlamaCppModelsResponse} from '../types'
+import type {LlamaCppModel, LlamaCppModelsResponse, LlamaCppProps} from '../types'
 
 const DEFAULT_LLAMA_CPP_URL = "http://127.0.0.1:1234"
 const LLAMA_CPP_MODELS_ENDPOINT = "/v1/models"
+
+/**
+ * Ports probed during auto-detection, in priority order.
+ *
+ * 1234 is llama.cpp's long-standing default; 9931 is the newer default that
+ * replaced 8080; 8080 is the older llama.cpp default; 11434 is Ollama.
+ *
+ * Override per-project with plugin options, e.g.
+ * `{"plugin": ["opencode-plugin-llama.cpp", {"ports": [1234, 9931]}]}`.
+ */
+export const DEFAULT_LLAMA_CPP_PORTS: readonly number[] = [1234, 9931, 8080, 11434]
 
 // Normalize base URL to ensure consistent format
 export function normalizeBaseURL(baseURL: string = DEFAULT_LLAMA_CPP_URL): string {
@@ -78,15 +89,48 @@ export async function fetchLlamaCppModelsDirect(baseURL: string = DEFAULT_LLAMA_
     }
 }
 
-// Auto-detect llama.cpp if not configured
-export async function autoDetectLlamaCpp(): Promise<string | null> {
-    const commonPorts = [1234, 8080, 11434]
-    for (const port of commonPorts) {
-        const baseURL = `http://127.0.0.1:${port}`
-        const isHealthy = await checkLlamaCppHealth(baseURL)
-        if (isHealthy) {
-            return baseURL
-        }
+/**
+ * Fetch a single model's `/props`.
+ *
+ * In router mode this endpoint requires `?model=<id>`; without it llama-server
+ * answers HTTP 400 `model name is missing from the request`. Headers such as
+ * `x-model` are not accepted.
+ *
+ * Caution: this **loads the model** when `models_autoload` is on (the default).
+ * It is fast (~0.1s) for a model already in use and slow for a cold one, so
+ * callers must bound the timeout and must not block a request on it.
+ */
+export async function fetchModelProps(
+    baseURL: string,
+    model: string,
+    timeoutMs = 2000,
+): Promise<LlamaCppProps | null> {
+    try {
+        const url = `${normalizeBaseURL(baseURL)}/props?model=${encodeURIComponent(model)}`
+        const response = await fetch(url, {
+            method: "GET",
+            signal: AbortSignal.timeout(timeoutMs),
+        })
+        if (!response.ok) return null
+        return (await response.json()) as LlamaCppProps
+    } catch {
+        // Timeout, HTTP 400 (model not routable), or a malformed payload.
+        return null
     }
-    return null
+}
+
+/**
+ * Auto-detect llama.cpp if not configured.
+ *
+ * Ports are probed concurrently so startup cost stays flat as the list grows,
+ * but the winner is still chosen by priority order (not by whichever replies
+ * first) so detection is deterministic.
+ */
+export async function autoDetectLlamaCpp(ports: readonly number[] = DEFAULT_LLAMA_CPP_PORTS): Promise<string | null> {
+    const health = await Promise.all(
+        ports.map(async (port) => checkLlamaCppHealth(`http://127.0.0.1:${port}`)),
+    )
+
+    const index = health.findIndex((healthy) => healthy)
+    return index === -1 ? null : `http://127.0.0.1:${ports[index]}`
 }

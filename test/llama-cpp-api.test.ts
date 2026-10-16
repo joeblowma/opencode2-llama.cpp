@@ -161,15 +161,24 @@ describe('fetchLlamaCppModelsDirect', () => {
 
 describe('autoDetectLlamaCpp', () => {
     it('should return first healthy URL', async () => {
-        mockFetch
-            .mockResolvedValueOnce({ok: true})  // port 1234
+        mockFetch.mockResolvedValue({ok: true})
         const result = await autoDetectLlamaCpp()
+        // 1234 has the highest priority.
         expect(result).toBe('http://127.0.0.1:1234')
     })
 
-    it('should try port 8080 if 1234 is down', async () => {
+    it('should try port 9931 if 1234 is down', async () => {
         mockFetch
             .mockResolvedValueOnce({ok: false})  // port 1234
+            .mockResolvedValueOnce({ok: true})   // port 9931
+        const result = await autoDetectLlamaCpp()
+        expect(result).toBe('http://127.0.0.1:9931')
+    })
+
+    it('should try port 8080 if 1234 and 9931 are down', async () => {
+        mockFetch
+            .mockResolvedValueOnce({ok: false})  // port 1234
+            .mockResolvedValueOnce({ok: false})  // port 9931
             .mockResolvedValueOnce({ok: true})   // port 8080
         const result = await autoDetectLlamaCpp()
         expect(result).toBe('http://127.0.0.1:8080')
@@ -178,10 +187,31 @@ describe('autoDetectLlamaCpp', () => {
     it('should try port 11434 if others are down', async () => {
         mockFetch
             .mockResolvedValueOnce({ok: false})  // port 1234
+            .mockResolvedValueOnce({ok: false})  // port 9931
             .mockResolvedValueOnce({ok: false})  // port 8080
             .mockResolvedValueOnce({ok: true})   // port 11434
         const result = await autoDetectLlamaCpp()
         expect(result).toBe('http://127.0.0.1:11434')
+    })
+
+    it('should respect an explicit port list', async () => {
+        mockFetch.mockResolvedValue({ok: true})
+        const result = await autoDetectLlamaCpp([9931])
+        expect(result).toBe('http://127.0.0.1:9931')
+        expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('should pick by priority, not by whichever port replies first', async () => {
+        // 1234 is slow but healthy; 9931 replies immediately. Priority must still win.
+        mockFetch.mockImplementation(async (url: string) => {
+            if (url.includes('1234')) {
+                await new Promise((resolve) => setTimeout(resolve, 20))
+                return {ok: true}
+            }
+            return {ok: true}
+        })
+        const result = await autoDetectLlamaCpp()
+        expect(result).toBe('http://127.0.0.1:1234')
     })
 
     it('should return null if no server found', async () => {

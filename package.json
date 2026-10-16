@@ -4,12 +4,13 @@
   "version": "0.2.0",
   "description": "OpenCode plugin for enhanced llama.cpp support with auto-detection and dynamic model discovery",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./index.ts"
   },
   "files": [
-    "src"
+    "src",
+    "index.ts"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -38,16 +39,18 @@
     "url": "git+https://github.com/llessi06/opencode-llama.cpp.git"
   },
   "dependencies": {
-    "@opencode/plugin": "latest"
+    "@opencode/plugin": "latest",
+    "opencode-plugin-llama.cpp": "link:",
+    "strip-json-comments": "^5.0.3"
   },
   "devDependencies": {
-    "@types/node": "^25.0.9",
-    "@typescript-eslint/eslint-plugin": "^8.53.0",
-    "@typescript-eslint/parser": "^8.53.0",
-    "@vitest/coverage-v8": "^4.0.17",
-    "eslint": "^9.39.2",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.53.0",
-    "vitest": "^4.0.17"
+    "@types/node": "^26.6.5",
+    "@typescript-eslint/eslint-plugin": "^8.71.2",
+    "@typescript-eslint/parser": "^8.71.2",
+    "@vitest/coverage-v8": "^5.0.4",
+    "eslint": "^10.12.0",
+    "typescript": "^6.0.0",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.4"
   }
 }
