@@ -2,6 +2,7 @@ import type {Plugin} from '@opencode/plugin'
 import {getActiveModel, getLlamaBaseURL, getLlamaState} from './llama-state'
 import {isReady} from '../utils/model-load-state'
 import {unloadLlamaCppModel} from '../utils/llama-cpp-api'
+import {report} from './notify'
 import {log} from '../utils/log'
 
 const COMMAND_NAME = 'llamacpp-unload'
@@ -128,14 +129,16 @@ export async function createUnloadCommand(ctx: Plugin.Context): Promise<(() => P
                 name: COMMAND_NAME,
                 description: COMMAND_DESCRIPTION,
                 execute: async (input) => {
-                    const outcome = await performUnload(input?.prompt?.text)
+                    const outcome = await performUnload(parseUnloadTarget(input?.prompt?.text))
                     const message = describeUnload(outcome)
 
-                    if (outcome.kind === 'unloaded' || outcome.kind === 'listed' || outcome.kind === 'not-loaded') {
-                        log.info(message)
-                    } else {
-                        log.warn(message)
-                    }
+                    const level = outcome.kind === 'unloaded'
+                        || outcome.kind === 'listed'
+                        || outcome.kind === 'not-loaded'
+                        ? 'info'
+                        : 'warn'
+
+                    await report(message, level)
                 },
             })
         })

@@ -220,6 +220,11 @@ then reports one of: catalog updated (with the model count), no change, server n
 (models from the last good scan are retained), or no server found. Or run `pnpm run doctor` to
 see what the server currently reports without touching the catalog at all.
 
+Both commands log their result to the OpenCode log. They deliberately do **not** print into the
+conversation: a plugin command has no output channel to the interface, and the workaround —
+injecting a synthetic session message — would put status text into model-visible history and
+steer the running turn. See [`docs/tui-output.md`](docs/tui-output.md).
+
 ### Freeing VRAM
 
 A router-mode server keeps a model's weights resident until something evicts them, so a stale

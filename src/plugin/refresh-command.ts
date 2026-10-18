@@ -1,5 +1,6 @@
 import type {Plugin} from '@opencode/plugin'
 import {refreshNow, type RefreshOutcome} from './config-hook'
+import {report} from './notify'
 import {log} from '../utils/log'
 
 const COMMAND_NAME = 'llamacpp-refresh'
@@ -45,11 +46,11 @@ export async function createRefreshCommand(ctx: Plugin.Context): Promise<(() => 
 
                     // info for the expected no-change case, warn for problems:
                     // "nothing happened" is a normal result here, not a fault.
-                    if (result.outcome === 'changed' || result.outcome === 'unchanged') {
-                        log.info(message)
-                    } else {
-                        log.warn(message)
-                    }
+                    const level = result.outcome === 'changed' || result.outcome === 'unchanged'
+                        ? 'info'
+                        : 'warn'
+
+                    await report(message, level)
                 },
             })
         })
