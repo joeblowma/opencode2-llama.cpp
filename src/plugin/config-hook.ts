@@ -2,13 +2,12 @@ import {Model, Provider} from '@opencode/plugin'
 import type {Plugin} from '@opencode/plugin'
 import {existsSync, readFileSync} from 'fs'
 import {join} from 'path'
-import stripJsonComments from 'strip-json-comments'
 import {modelStatusCache} from '../cache'
-import {categorizeModel, formatModelName} from '../utils'
+import {categorizeModel, formatModelName, parseJsonc, resolveContextSize} from '../utils'
 import {autoDetectLlamaCpp, checkLlamaCppHealth, DEFAULT_LLAMA_CPP_PORTS, discoverLlamaCppModels, normalizeBaseURL} from '../utils/llama-cpp-api'
 import type {LlamaCppModel} from '../types'
 import {log} from '../utils/log'
-import {getLlamaBaseURL, getLlamaState, setLlamaBaseURL, setLlamaModels} from './llama-state'
+import {getFallbackContext, getLlamaBaseURL, getLlamaState, setFallbackContext, setLlamaBaseURL, setLlamaModels} from './llama-state'
 
 /** Provider ID this plugin owns. */
 const PROVIDER_ID = 'llama.cpp'
@@ -60,8 +59,7 @@ function readBaseURLFromConfig(): string | null {
 
         try {
             const raw = readFileSync(configPath, 'utf-8')
-            const cleaned = stripJsonComments(raw).replace(/,\s*([\]}])/g, '$1')
-            const config = JSON.parse(cleaned)
+            const config = parseJsonc<any>(raw)
 
             // V2 uses `providers`, V1 used `provider`; `settings` is V2, `options` is V1.
             const declared = config.providers?.[PROVIDER_ID] ?? config.provider?.[PROVIDER_ID]
@@ -155,36 +153,6 @@ const applyLlamaCppProvider: ProviderTransform = (editor) => {
 }
 
 /**
- * Resolve the model's effective context size.
- *
- * `llama-server`'s router mode reports no context field for an *unloaded*
- * model — the value only appears as `-c` / `--ctx-size` in the per-model launch
- * args in `status.args`. Without this the plugin falls back to
- * `Model.Info.default`'s 200_000, over-reporting by up to 3x against servers
- * running 65_536–131_072, which causes context-overflow failures.
- *
- * Note this is the *serving* context (`n_ctx`), not `meta.n_ctx_train`, which
- * is the model's trained maximum and is only present once loaded.
- */
-function resolveContextSize(model: LlamaCppModel): number | undefined {
-    if (model.context_length) return model.context_length
-    if (model.context_window) return model.context_window
-
-    const args = model.status?.args
-    if (!Array.isArray(args)) return undefined
-
-    // llama.cpp accepts both the short and long spelling.
-    for (const flag of ['--ctx-size', '-c']) {
-        const index = args.indexOf(flag)
-        if (index === -1) continue
-        const value = Number(args[index + 1])
-        if (Number.isFinite(value) && value > 0) return value
-    }
-
-    return undefined
-}
-
-/**
  * Resolve input/output modalities.
  *
  * `llama-server` computes `architecture.input_modalities` /
@@ -247,8 +215,9 @@ function applyModelInfo(model: LlamaCppModel, info: Model.Info): Model.Info {
     next.name = formatModelName(model)
 
     const limit = {...info.limit}
-    const contextSize = resolveContextSize(model)
-    if (contextSize) limit.context = contextSize
+    // Always set: an unresolvable context must not silently inherit the SDK's
+    // 200_000, which over-reports against local servers by up to 12x.
+    limit.context = resolveContextSize(model) ?? getFallbackContext()
 
     // `limit.output` stays at the SDK default: llama-server exposes no
     // max-output-tokens field on any endpoint (`--n-predict` is a generation
@@ -268,6 +237,12 @@ function applyModelInfo(model: LlamaCppModel, info: Model.Info): Model.Info {
 }
 
 async function detectAndRegister(ctx: Plugin.Context): Promise<void> {
+    // Applied before any transform can run so the replayed catalog sees it.
+    const {fallbackContext} = readOptions(ctx)
+    if (fallbackContext !== undefined) {
+        setFallbackContext(fallbackContext)
+    }
+
     const baseURL = await resolveBaseURL(ctx)
     if (!baseURL) {
         log.warn('No llama.cpp server found')
@@ -317,7 +292,7 @@ async function resolveBaseURL(ctx: Plugin.Context): Promise<string | null> {
  * the catalog. llama.cpp's default port has moved more than once, so this keeps
  * the plugin usable without a code change.
  */
-function readOptions(ctx: Plugin.Context): {baseURL?: string; ports: readonly number[]} {
+function readOptions(ctx: Plugin.Context): {baseURL?: string; ports: readonly number[]; fallbackContext?: number} {
     const options = ctx.options ?? {}
 
     const baseURL = typeof options.baseURL === 'string' ? options.baseURL : undefined
@@ -326,11 +301,17 @@ function readOptions(ctx: Plugin.Context): {baseURL?: string; ports: readonly nu
         ? options.ports.filter((port): port is number => typeof port === 'number')
         : DEFAULT_LLAMA_CPP_PORTS
 
-    if (baseURL || ports !== DEFAULT_LLAMA_CPP_PORTS) {
-        log.debug('Using plugin options', {baseURL, ports})
+    // Only honoured when the server itself reports no context, so this only
+    // changes behaviour on setups where discovery is blind.
+    const fallbackContext = typeof options.fallbackContext === 'number'
+        ? options.fallbackContext
+        : undefined
+
+    if (baseURL || fallbackContext || ports !== DEFAULT_LLAMA_CPP_PORTS) {
+        log.debug('Using plugin options', {baseURL, ports, fallbackContext})
     }
 
-    return {baseURL, ports: ports.length > 0 ? ports : DEFAULT_LLAMA_CPP_PORTS}
+    return {baseURL, fallbackContext, ports: ports.length > 0 ? ports : DEFAULT_LLAMA_CPP_PORTS}
 }
 
 /**

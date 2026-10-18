@@ -1,5 +1,21 @@
 # llama.cpp Plugin Enhancement Tasks
 
+> **Status: historical.** This roadmap was written against OpenCode V1 and is kept for
+> provenance. It has not been re-baselined for the V2 catalog API.
+>
+> Notable supersessions:
+> - **Task 5.1 (configuration validation schema)** — *superseded.* A V1-shaped validation
+>   module was written and later removed as dead code; it validated fields (`config.provider`,
+>   `provider.info.id`) the V2 catalog does not produce. OpenCode validates its own config at
+>   startup, and `pnpm run doctor` now covers plugin-specific diagnostics.
+> - **Phase 1 / Task 1.1 (`chat.params` hook)** — *superseded by V2.* Model-load validation now
+>   runs through `ctx.session.hook('context', …)`.
+> - **Task 5.2 (preference management)** — *superseded by plugin options.* Configurable
+>   behaviour is exposed via `baseURL`, `ports`, and `fallbackContext` in `opencode.json`
+>   rather than a separate preference store.
+>
+> Treat anything below as a historical record rather than a work queue.
+
 ## Epic 1: Core Model Validation System
 
 ### Phase 1: Fix chat.params Hook Implementation

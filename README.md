@@ -87,10 +87,11 @@ can be overridden without touching the code:
 }
 ```
 
-| Option    | Type       | Default                        | Notes                                                          |
-| --------- | ---------- | ------------------------------ | -------------------------------------------------------------- |
-| `baseURL` | `string`   | —                              | Highest priority; wins even over a provider already configured. `/v1` suffix optional |
-| `ports`   | `number[]` | `[1234, 9931, 8080, 11434]`    | Restricts auto-detection to these ports, in priority order      |
+| Option             | Type       | Default                        | Notes                                                          |
+| ------------------ | ---------- | ------------------------------ | -------------------------------------------------------------- |
+| `baseURL`          | `string`   | —                              | Highest priority; wins even over a provider already configured. `/v1` suffix optional |
+| `ports`            | `number[]` | `[1234, 9931, 8080, 11434]`    | Restricts auto-detection to these ports, in priority order      |
+| `fallbackContext`  | `number`   | `16384`                        | Context to advertise only when the server reports none. Minimum `4096`; see [Context size](#context-size) |
 
 ### Manual Configuration
 
@@ -116,6 +117,35 @@ You can also manually configure the provider with specific models:
 
 The plugin will automatically discover and register any additional models available on the llama.cpp server that aren't already configured.
 
+### Context size
+
+Advertising more context than a server can actually serve is the most damaging thing this
+plugin could get wrong, because it fails *quietly*: the KV cache overruns, spills out of VRAM
+into system RAM, and decode throughput collapses rather than erroring.
+
+So the plugin reads the real serving context from the server instead of assuming:
+
+1. `context_length` or `context_window` on the model, when the server reports one
+2. Otherwise `-c` / `--ctx-size` in the model's launch args — the only place it appears for a
+   model that is not currently loaded
+3. Otherwise `16384`
+
+That third case is deliberately far below OpenCode's own 200,000 default. The SDK default
+assumes hosted infrastructure; a local llama.cpp server is far more likely to be configured
+at 32k–131k. When the failure mode is "quietly slow", guessing low only costs you some
+conversation history, while guessing high costs you throughput.
+
+In practice step 3 is rare — `llama-server` reports `--ctx-size` for essentially every model.
+Run `pnpm run doctor` to confirm yours do; if any fall back, set `fallbackContext` to match
+your hardware:
+
+```json
+["opencode-plugin-llama.cpp", {"fallbackContext": 32768}]
+```
+
+This value is only consulted when the server reports nothing, so raising it never overrides a
+correctly-detected context size.
+
 ## How It Works
 
 1. On OpenCode startup, the plugin's `setup` function runs and resolves the llama.cpp base URL:
@@ -140,6 +170,32 @@ The plugin will automatically discover and register any additional models availa
 
 ## Debugging
 
+### `pnpm run doctor`
+
+Answers the two questions that matter when the plugin misbehaves — which server it settled on,
+and can it reach it — by calling the same functions the plugin uses at startup:
+
+```bash
+pnpm run doctor                          # resolve from config, else scan ports
+pnpm run doctor -- http://localhost:9931 # override the lookup
+```
+
+```
+baseURL: http://localhost:9931  (from config file)
+health:  reachable
+models:  21 discovered
+  - JackOD-9B-Coder-MTP-v4  (ctx 65536)
+  ...
+all 21 models report a context size (no fallback needed)
+
+Result: plugin setup looks good.
+```
+
+It reads `.json` and `.jsonc` config (comments and trailing commas included) and exits non-zero
+when no server is reachable, so it works in CI or a pre-commit hook.
+
+### Debug logging
+
 Set the `DEBUG` environment variable to enable verbose logging:
 
 ```bash
@@ -147,6 +203,20 @@ DEBUG=1 opencode
 ```
 
 Log lines are prefixed with `[opencode-llama-cpp]`.
+
+### Plugin fails to load
+
+OpenCode reports this as an opaque `err_XXXXXXXX`. The real cause is in its log:
+
+```bash
+grep "failed to load plugin" ~/.local/share/opencode/log/opencode.log
+```
+
+The hash changes with every failure, so treat a changing code as one problem rather than a new
+one. A `Cannot find package` cause means a broken dependency tree; repair it with
+`pnpm install --force` (a plain install can report "Already up to date" while the packages are
+missing) and then **fully restart OpenCode** — the runtime caches module resolution, so a running
+server will not pick up the repair.
 
 ## Requirements
 
@@ -160,10 +230,14 @@ The project uses pnpm exclusively.
 
 ```bash
 pnpm install        # install dependencies
-pnpm test           # run unit tests (143 tests)
+pnpm test           # run unit tests
 pnpm test:coverage  # run tests with coverage report
 pnpm validate       # lint + typecheck + tests
+pnpm doctor         # diagnose a running llama.cpp server
 ```
+
+Runtime dependencies are kept to `@opencode/plugin` alone — everything else is dev-only, so a
+missing or corrupt `node_modules` cannot prevent the plugin from loading.
 
 ## License
 

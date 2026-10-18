@@ -22,7 +22,7 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "build": "pnpm run typecheck && pnpm run test:run",
     "validate": "pnpm run lint && pnpm run typecheck && pnpm run test:run",
-    "validate:config": "node scripts/validate-config.ts",
+    "doctor": "bun scripts/doctor.ts",
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
@@ -39,9 +39,7 @@
     "url": "git+https://github.com/llessi06/opencode-llama.cpp.git"
   },
   "dependencies": {
-    "@opencode/plugin": "latest",
-    "opencode-plugin-llama.cpp": "link:",
-    "strip-json-comments": "^5.0.3"
+    "@opencode/plugin": "latest"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

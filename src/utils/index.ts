@@ -2,6 +2,8 @@ import type {AutoFixSuggestion, ModelValidationError, SimilarModel} from '../typ
 import {log} from './log'
 
 export {formatModelName, extractModelOwner} from './format-model-name'
+export {parseJsonc, stripJsonComments} from './jsonc'
+export {resolveContextSize, FALLBACK_CONTEXT_SIZE} from './resolve-context-size'
 
 // Categorize models by type
 export function categorizeModel(modelId: string): 'chat' | 'embedding' | 'unknown' {
