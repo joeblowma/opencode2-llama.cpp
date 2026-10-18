@@ -32,6 +32,9 @@ export function resolveContextSize(model: LlamaCppModel): number | undefined {
     if (model.context_length) return model.context_length
     if (model.context_window) return model.context_window
 
+    // Present only once loaded, and authoritative when it is.
+    if (model.meta?.n_ctx) return model.meta.n_ctx
+
     const args = model.status?.args
     if (!Array.isArray(args)) return undefined
 

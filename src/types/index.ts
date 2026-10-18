@@ -36,12 +36,24 @@ export interface LlamaCppModel {
     capabilities?: LlamaCppModelCapabilities
     supported_parameters?: string[]
     status?: LlamaCppModelStatus
+    /**
+     * Rich metadata, present **only once a model is loaded** — unloaded models
+     * omit the block entirely rather than reporting nulls.
+     *
+     * `n_ctx` is the serving context and agrees with `--ctx-size`; `n_ctx_train`
+     * is the model's trained maximum. Prefer `n_ctx` where both exist.
+     */
     meta?: {
         vocab_type?: number
         n_vocab?: number
+        n_ctx?: number
         n_ctx_train?: number
         n_embd?: number
         n_params?: number
+        /** GGUF file size in bytes. */
+        size?: number
+        /** Quantisation label, e.g. `"IQ4_XS - 4.25 bpw"`. */
+        ftype?: string
     }
 }
 

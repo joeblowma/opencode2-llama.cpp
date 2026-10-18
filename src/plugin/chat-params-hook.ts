@@ -1,8 +1,9 @@
 import type {Plugin} from '@opencode/plugin'
 import {getLoadedModels} from './get-loaded-models'
-import {getLlamaBaseURL} from './llama-state'
+import {getLlamaBaseURL, getLlamaState} from './llama-state'
 import {detectToolSupport} from './tool-support'
 import {categorizeError, retryWithBackoff} from '../utils'
+import {describeColdModel, isReady} from '../utils/model-load-state'
 import {log} from '../utils/log'
 
 const PROVIDER_ID = 'llama.cpp'
@@ -40,25 +41,39 @@ export async function createChatParamsHook(ctx: Plugin.Context): Promise<(() => 
             )
 
             if (!validationResult.success) {
-                const errorCategory = categorizeError(validationResult.error || 'Validation failed', {
-                    baseURL,
-                    modelId: modelID,
-                })
+                // Prefer the specific cold-model explanation over a generic
+                // network-style error: "not loaded" and "unreachable" call for
+                // different user actions, and conflating them sends people
+                // chasing a server that is in fact perfectly healthy.
+                const known = getLlamaState().models.find((m) => m.id === modelID)
 
-                log.warn('Model validation failed', {
-                    model: modelID,
-                    error: validationResult.error,
-                    errorType: errorCategory.type,
-                    severity: errorCategory.severity,
-                    baseURL,
-                })
+                if (known && !isReady(known)) {
+                    const message = describeColdModel(known)
 
-                // Warn rather than block: llama.cpp may be mid-load.
-                event.system.push({
-                    type: 'text',
-                    text: `[llama.cpp warning] Model '${modelID}' is not currently loaded on the llama.cpp server at ${baseURL}. ` +
-                        `The request may fail. Error: ${errorCategory.message}`,
-                })
+                    log.info('Model not resident', {model: modelID, baseURL})
+
+                    event.system.push({type: 'text', text: message})
+                } else {
+                    const errorCategory = categorizeError(validationResult.error || 'Validation failed', {
+                        baseURL,
+                        modelId: modelID,
+                    })
+
+                    log.warn('Model validation failed', {
+                        model: modelID,
+                        error: validationResult.error,
+                        errorType: errorCategory.type,
+                        severity: errorCategory.severity,
+                        baseURL,
+                    })
+
+                    // Warn rather than block: llama.cpp may be mid-load.
+                    event.system.push({
+                        type: 'text',
+                        text: `[llama.cpp warning] Model '${modelID}' is not currently loaded on the llama.cpp server at ${baseURL}. ` +
+                            `The request may fail. Error: ${errorCategory.message}`,
+                    })
+                }
             } else {
                 log.debug(`Model '${modelID}' validated successfully`)
             }

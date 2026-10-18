@@ -1,0 +1,150 @@
+[
+  {
+    "id": "Qwopus3-5-9B-Coder-Flash",
+    "aliases": [],
+    "tags": [],
+    "object": "model",
+    "owned_by": "llamacpp",
+    "created": 1792343302,
+    "status": {
+      "value": "unloaded",
+      "args": [
+        "C:\\llamacpp\\llama-server.exe",
+        "--cache-type-k-swa", "q4_0",
+        "--cache-type-v-swa", "q4_0",
+        "--context-shift",
+        "--cors-origins", "0.0.0.0",
+        "--host", "127.0.0.1",
+        "--jinja",
+        "--kv-tail-tokens", "0",
+        "--min-p", "0.01",
+        "--poll", "80",
+        "--presence-penalty", "0.0",
+        "--reasoning-preserve",
+        "--repeat-penalty", "1.05",
+        "--rope-scale", "3",
+        "--rope-scaling", "yarn",
+        "--alias", "Qwopus3-5-9B-Coder-Flash",
+        "--batch-size", "2048",
+        "--ctx-size", "98304",
+        "--model", "C:\\llm\\_Qwen\\Qwopus3-5-9B-Coder-Flash2\\Qwopus3-5-9B-Coder-Flash-IQ4_XS.gguf",
+        "--n-gpu-layers", "all",
+        "--parallel", "1",
+        "--threads", "8"
+      ],
+      "preset": "[Qwopus3-5-9B-Coder-Flash]\nctx-size = 98304\n"
+    },
+    "architecture": {
+      "input_modalities": ["text"],
+      "output_modalities": ["text"]
+    },
+    "source": "preset",
+    "can_remove": false
+  },
+  {
+    "id": "Qwopus3.5-9B-v3.5.coder_MM_V3",
+    "aliases": [],
+    "tags": [],
+    "object": "model",
+    "owned_by": "llamacpp",
+    "created": 1792343302,
+    "status": {
+      "value": "unloaded",
+      "args": [
+        "C:\\llamacpp\\llama-server.exe",
+        "--context-shift",
+        "--cors-origins", "0.0.0.0",
+        "--host", "127.0.0.1",
+        "--jinja",
+        "--poll", "80",
+        "--alias", "Qwopus3.5-9B-v3.5.coder_MM_V3",
+        "--batch-size", "2048",
+        "--ctx-size", "98304",
+        "--mmproj", "C:\\llm\\_Qwen\\Qwopus3.5-9B-Coder.mmproj-Q8_0.gguf",
+        "--model", "C:\\llm\\_Qwen\\Qwopus3.5-9B-v3.5-MTP.coder_V3\\Qwopus3.5-9B-Coder-MTP-IQ4_XS_v3.gguf",
+        "--n-gpu-layers", "all",
+        "--parallel", "1"
+      ],
+      "preset": "[Qwopus3.5-9B-v3.5.coder_MM_V3]\nctx-size = 98304\n"
+    },
+    "architecture": {
+      "input_modalities": ["text", "image"],
+      "output_modalities": ["text"]
+    },
+    "source": "preset",
+    "can_remove": false
+  },
+  {
+    "id": "gemma-4-E4B-MTP",
+    "aliases": [],
+    "tags": [],
+    "object": "model",
+    "owned_by": "llamacpp",
+    "created": 1792343302,
+    "status": {
+      "value": "unloaded",
+      "args": [
+        "C:\\llamacpp\\llama-server.exe",
+        "--context-shift",
+        "--cors-origins", "0.0.0.0",
+        "--host", "127.0.0.1",
+        "--jinja",
+        "--kv-tail-tokens", "0",
+        "--min-p", "0.01",
+        "--poll", "80",
+        "--alias", "gemma-4-E4B-MTP",
+        "--batch-size", "2048",
+        "--ctx-size", "131072",
+        "--mmproj", "C:\\llm\\_Gemma\\gemma-4-E4B-it-qat\\gemma-4-E4B-it-qat-UD-mmproj-BF16.gguf",
+        "--model", "C:\\llm\\_Gemma\\gemma-4-E4B-it-qat\\gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
+        "--n-gpu-layers", "99",
+        "--parallel", "1"
+      ],
+      "preset": "[gemma-4-E4B-MTP]\nctx-size = 131072\n"
+    },
+    "architecture": {
+      "input_modalities": ["text", "image", "audio"],
+      "output_modalities": ["text"]
+    },
+    "source": "preset",
+    "can_remove": false
+  },
+  {
+    "id": "JackOD-9B-Coder-MTP-v4",
+    "aliases": [],
+    "tags": [],
+    "object": "model",
+    "owned_by": "llamacpp",
+    "created": 1792343302,
+    "status": {
+      "value": "loaded",
+      "args": [
+        "C:\\llamacpp\\llama-server.exe",
+        "--context-shift",
+        "--host", "127.0.0.1",
+        "--alias", "JackOD-9B-Coder-MTP-v4",
+        "--batch-size", "2048",
+        "--ctx-size", "65536",
+        "--model", "C:\\llm\\_Qwen\\JackOD-9B-Coder\\JackOD-9B-Coder-IQ4_XS_v4.gguf",
+        "--parallel", "1"
+      ],
+      "preset": "[JackOD-9B-Coder-MTP-v4]\nctx-size = 65536\n"
+    },
+    "architecture": {
+      "input_modalities": ["text"],
+      "output_modalities": ["text"]
+    },
+    "source": "preset",
+    "can_remove": false,
+    "meta": {
+      "vocab_type": 2,
+      "n_vocab": 248320,
+      "n_ctx": 65536,
+      "n_ctx_train": 65536,
+      "n_embd": 4096,
+      "n_params": 9197093888,
+      "size": 5695688704,
+      "ftype": "IQ4_XS - 4.25 bpw"
+    }
+  }
+]
