@@ -2,6 +2,8 @@ import {Plugin} from "@opencode/plugin"
 import {createConfigHook} from './config-hook'
 import {createChatParamsHook} from './chat-params-hook'
 import {createEventHook} from './event-hook'
+import {createRefreshCommand} from './refresh-command'
+import {createUnloadCommand} from './unload-command'
 import {log} from '../utils/log'
 
 /**
@@ -27,10 +29,18 @@ export const LlamaCppPlugin = Plugin.define({
         // Register event subscription
         const eventCleanup = createEventHook(ctx)
 
+        // Manual escape hatch from the 60s sweep, for when a minute is too long
+        const commandCleanup = await createRefreshCommand(ctx)
+
+        // Free VRAM by evicting a resident model
+        const unloadCleanup = await createUnloadCommand(ctx)
+
         // Return cleanup function
         return async () => {
             if (configCleanup) await configCleanup()
             if (chatCleanup) await chatCleanup()
+            if (commandCleanup) await commandCleanup()
+            if (unloadCleanup) await unloadCleanup()
             if (eventCleanup) eventCleanup()
         }
     },

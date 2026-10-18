@@ -13,6 +13,13 @@
 > - **Task 5.2 (preference management)** — *superseded by plugin options.* Configurable
 >   behaviour is exposed via `baseURL`, `ports`, and `fallbackContext` in `opencode.json`
 >   rather than a separate preference store.
+> - **Task 3.1 / 3.2 (load, unload, list models)** — *partly delivered, and deliberately.*
+>   `/llamacpp-unload` exists, but there is deliberately **no** load tool: `models_autoload` is
+>   on by default and a router autoloads on first request, so an explicit load is redundant and
+>   would only put a VRAM-clamping action behind an agent call.
+> - **Task 3.3 (server start/stop)** — *rejected on purpose.* Starting or killing `llama-server`
+>   from a catalog plugin is a large blast radius for little gain; `/llamacpp-refresh` and
+>   `/llamacpp-unload` cover the operational need without it.
 >
 > Treat anything below as a historical record rather than a work queue.
 

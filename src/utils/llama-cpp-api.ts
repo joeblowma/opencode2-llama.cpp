@@ -64,9 +64,63 @@ export async function discoverLlamaCppModels(baseURL: string = DEFAULT_LLAMA_CPP
         }
 
         const data = (await response.json()) as LlamaCppModelsResponse
-        return data.data ?? []
+
+        // Guard the shape, not just the presence: a server (or proxy) that
+        // answers 200 with `data` as a string or object would otherwise hand
+        // every downstream `.map()` a value it cannot iterate.
+        if (!Array.isArray(data?.data)) return []
+
+        return data.data.filter((m): m is LlamaCppModel => typeof m?.id === 'string')
     } catch (error) {
         throw new Error(`Failed to discover models: ${error instanceof Error ? error.message : String(error)}`)
+    }
+}
+
+/**
+ * Unload a resident model from a router-mode server, freeing its VRAM.
+ *
+ * `POST /models/unload` with `{"model": "<id>"}`, answering `{"success": true}`.
+ * Note the endpoint is *unversioned* — `/v1/models/unload` does not exist.
+ *
+ * Idempotent: unloading a model that is already unloaded still answers success,
+ * so there is no need to check the current state first. `status.value` in
+ * `/v1/models` lags the actual unload by a moment, so callers should not treat
+ * an immediate re-read as proof of failure.
+ */
+export async function unloadLlamaCppModel(
+    baseURL: string = DEFAULT_LLAMA_CPP_URL,
+    model: string,
+    timeoutMs = 10_000,
+): Promise<{success: true} | {success: false; error: string}> {
+    try {
+        const response = await fetch(`${normalizeBaseURL(baseURL)}/models/unload`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({model}),
+            signal: AbortSignal.timeout(timeoutMs),
+        })
+
+        if (!response.ok) {
+            // The API answers `{"error":{"code":…,"message":…}}`; surface the
+            // message, since "400" alone tells a user nothing actionable.
+            const detail = await readErrorMessage(response)
+            return {success: false, error: detail ?? `HTTP ${response.status}`}
+        }
+
+        return {success: true}
+    } catch (error) {
+        return {success: false, error: error instanceof Error ? error.message : String(error)}
+    }
+}
+
+/** Best-effort extraction of the server's error message from a failed response. */
+async function readErrorMessage(response: Response): Promise<string | null> {
+    try {
+        const body = await response.json() as {error?: {message?: string} | string}
+        const message = typeof body?.error === 'string' ? body.error : body?.error?.message
+        return typeof message === 'string' && message.length > 0 ? message : null
+    } catch {
+        return null
     }
 }
 

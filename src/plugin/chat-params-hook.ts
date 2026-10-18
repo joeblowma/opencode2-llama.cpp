@@ -1,6 +1,6 @@
 import type {Plugin} from '@opencode/plugin'
 import {getLoadedModels} from './get-loaded-models'
-import {getLlamaBaseURL, getLlamaState} from './llama-state'
+import {getLlamaBaseURL, getLlamaState, setActiveModel} from './llama-state'
 import {detectToolSupport} from './tool-support'
 import {categorizeError, retryWithBackoff} from '../utils'
 import {describeColdModel, isReady} from '../utils/model-load-state'
@@ -21,6 +21,9 @@ export async function createChatParamsHook(ctx: Plugin.Context): Promise<(() => 
         }
 
         try {
+            // Recorded so `/llamacpp-unload` can protect the in-flight model.
+            setActiveModel(modelID)
+
             const baseURL = getLlamaBaseURL() ?? FALLBACK_BASE_URL
 
             // Learn tool support for the model actually in use. Detached and

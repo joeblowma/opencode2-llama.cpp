@@ -23,6 +23,8 @@ OpenCode V2 plugin for enhanced llama.cpp support with auto-detection, dynamic m
 - **Model Validation**: A session context hook verifies that the selected model is actually loaded on the server (with retry/backoff) and adds a system warning to the prompt if it is not. The warning distinguishes a model that is *currently loading* (this request will wait) from one that is *cold* (this request will trigger a load first), since the remedy differs
 - **Tool-Calling Detection**: llama.cpp has no static capability field — function calling depends on the chat template plus `--jinja`. For the model you are actually using, the plugin resolves this from `chat_template_caps` in `/props` and enables tools in the catalog. It probes **only models already loaded**, because merely requesting `/props?model=` autoloads a model and aborting the fetch does not cancel that server-side load. Results are cached per model, and a confirmed `false` never overrides a value you set yourself
 - **Periodic Refresh**: Re-discovers models every 60 seconds and reloads the catalog
+- **Manual Refresh**: `/llamacpp-refresh` re-scans immediately, for when a minute is too long to wait after changing a `llama-server` preset
+- **VRAM Management**: `/llamacpp-unload <model>` evicts a resident model via `POST /models/unload`, freeing its VRAM without restarting the server. Run it with no argument to list what is currently loaded. It refuses to unload the model carrying your current request
 - **Health Check Monitoring**: Verifies the llama.cpp server is accessible before attempting operations
 - **Caching**: A single shared model status cache reduces redundant API calls
 - **Error Handling**: Smart error categorization with actionable messages
@@ -206,8 +208,40 @@ current catalog, it does not change what llama.cpp has available, and none of th
 (`tui.command.execute`, `tui.session.select`, …) fire on it. Polling is the honest mechanism for
 data that lives in another process.
 
-If you have just changed `llama-server` presets and want to skip the wait, run `pnpm run doctor`
-to see what the server currently reports.
+If you have just changed `llama-server` presets and want to skip the wait, run the
+`/llamacpp-refresh` command in the TUI:
+
+```
+/llamacpp-refresh
+```
+
+It runs the same discovery pass the timer does and reloads the catalog if anything changed,
+then reports one of: catalog updated (with the model count), no change, server not answering
+(models from the last good scan are retained), or no server found. Or run `pnpm run doctor` to
+see what the server currently reports without touching the catalog at all.
+
+### Freeing VRAM
+
+A router-mode server keeps a model's weights resident until something evicts them, so a stale
+load can hold gigabytes with no error anywhere. To release it:
+
+```
+/llamacpp-unload                    # list what is currently loaded
+/llamacpp-unload Qwopus3.5-9B-v3.5.coder_V3
+```
+
+This calls `POST /models/unload` (note: unversioned — `/v1/models/unload` does not exist) with
+`{"model": "<id>"}`, which answers `{"success": true}`. The model name may be abbreviated to
+any unique fragment.
+
+Two deliberate guards:
+
+- **It will not unload the model carrying your current request.** There is no way to ask the
+  server whether a slot is busy, and unloading mid-generation strands the request with no useful
+  error. Switch models first if you need to evict the active one.
+- **An already-cold model is a no-op**, reported as such, rather than a pointless round trip.
+
+Unloading is reversible — the next request for that model simply triggers a load again.
 
 ### Debug logging
 

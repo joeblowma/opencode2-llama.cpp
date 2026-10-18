@@ -33,6 +33,8 @@ export interface LlamaState {
      * not capture per-setup values from its registration call.
      */
     fallbackContext: number
+    /** Model most recently seen carrying a request; see `setActiveModel`. */
+    activeModel?: string
 }
 
 const state: LlamaState = {
@@ -89,4 +91,20 @@ export function getLlamaBaseURL(): string | null {
  */
 export function getModelStatus(modelID: string): string | undefined {
     return state.models.find((model) => model.id === modelID)?.status?.value
+}
+
+/**
+ * The model most recently seen carrying a request.
+ *
+ * Recorded by the session hook so `/llamacpp-unload` can refuse to pull the
+ * rug out from under an in-flight request. There is no way to ask the server
+ * "is this slot busy?", and unloading a model mid-generation strands the
+ * request with no useful error.
+ */
+export function setActiveModel(modelID: string): void {
+    state.activeModel = modelID
+}
+
+export function getActiveModel(): string | undefined {
+    return state.activeModel
 }

@@ -17,10 +17,28 @@ const PROVIDER_NAME = 'llama.cpp (local)'
 const PROVIDER_PACKAGE = '@opencode/ai/providers/openai-compatible'
 const REFRESH_INTERVAL_MS = 60_000
 
+/**
+ * Ids of models hidden on the previous sweep.
+ *
+ * Tracked so a broken preset is warned about once, on the change, rather than
+ * on every 60s tick for as long as the condition holds.
+ */
+let lastHiddenSignature = ''
+
 /** The callback type `ctx.provider.transform` expects. */
 type ProviderTransform = Parameters<Plugin.Context['provider']['transform']>[0]
 
 const providerID = PROVIDER_ID as Provider.ID
+
+/**
+ * Result of a manual refresh, shaped so the slash command can report something
+ * specific rather than a bare success/failure.
+ */
+export type RefreshOutcome =
+    | {outcome: 'changed'; baseURL: string; count: number}
+    | {outcome: 'unchanged'; baseURL: string; count: number}
+    | {outcome: 'unreachable'; baseURL: string}
+    | {outcome: 'no-server'}
 
 /**
  * `Model.ID.make` exists at runtime but is not surfaced on the inferred
@@ -320,6 +338,31 @@ function readOptions(ctx: Plugin.Context): {baseURL?: string; ports: readonly nu
  * list is intentionally left in place so a transient outage does not strip the
  * catalog.
  */
+/**
+ * Re-run discovery now and reload the catalog if the set changed.
+ *
+ * Shared by the 60s timer and the `/llamacpp-refresh` command so both paths
+ * behave identically. Exported for the slash command; the timer below is the
+ * only other caller.
+ */
+export async function refreshNow(ctx: Plugin.Context): Promise<RefreshOutcome> {
+    const baseURL = getLlamaBaseURL() ?? await resolveBaseURL(ctx)
+    if (!baseURL) return {outcome: 'no-server'}
+
+    if (!(await checkLlamaCppHealth(baseURL))) return {outcome: 'unreachable', baseURL}
+
+    const before = modelSignature(getLlamaState().models)
+    await discoverModels(baseURL)
+
+    // Compare by content, not identity: `discoverModels` always installs a fresh
+    // array, so an identity check would rebuild the catalog every tick.
+    const after = modelSignature(getLlamaState().models)
+    if (after === before) return {outcome: 'unchanged', baseURL, count: getLlamaState().models.length}
+
+    await ctx.provider.reload()
+    return {outcome: 'changed', baseURL, count: getLlamaState().models.length}
+}
+
 async function discoverModels(baseURL: string): Promise<void> {
     let discovered: LlamaCppModel[]
     try {
@@ -341,8 +384,19 @@ async function discoverModels(baseURL: string): Promise<void> {
     // the session hook reads never contains a model that cannot load.
     const {loadable, unloadable} = await findUnloadableModels(discovered)
 
-    for (const {model, modelPath} of unloadable) {
-        log.warn('Excluding model with missing weights', {model: model.id, modelPath})
+    // A stable server with a few stale presets would otherwise emit the same
+    // warnings every 60 seconds forever. Report the standing state at `info`
+    // on each sweep, and reserve `warn` for the set actually changing, so a
+    // newly-broken path is noticed without turning a known condition into a
+    // repeating alert.
+    const hiddenSignature = unloadable.map((u) => u.model.id).sort().join(',')
+    const hiddenChanged = hiddenSignature !== lastHiddenSignature
+    lastHiddenSignature = hiddenSignature
+
+    if (hiddenChanged && unloadable.length > 0) {
+        for (const {model, modelPath} of unloadable) {
+            log.warn('Excluding model with missing weights', {model: model.id, modelPath})
+        }
     }
 
     const models = loadable
@@ -355,9 +409,10 @@ async function discoverModels(baseURL: string): Promise<void> {
     }
 
     setLlamaModels(models)
-    log.info(`Discovered ${models.length} models from llama.cpp`, {
-        hidden: unloadable.length,
-    })
+    log.info(
+        `Discovered ${models.length} models from llama.cpp`
+        + (unloadable.length > 0 ? ` (${unloadable.length} hidden: ${hiddenSignature})` : ''),
+    )
 
     // Warm the cache so the first request does not pay for a redundant fetch.
     try {
@@ -368,21 +423,7 @@ async function discoverModels(baseURL: string): Promise<void> {
 }
 
 async function refreshModels(ctx: Plugin.Context): Promise<void> {
-    const baseURL = getLlamaBaseURL() ?? await resolveBaseURL(ctx)
-    if (!baseURL) return
-
-    if (!(await checkLlamaCppHealth(baseURL))) return
-
-    const before = modelSignature(getLlamaState().models)
-    await discoverModels(baseURL)
-
-    // Compare by content, not identity: `discoverModels` always installs a fresh
-    // array, so an identity check would rebuild the catalog every tick.
-    if (modelSignature(getLlamaState().models) === before) {
-        return
-    }
-
-    await ctx.provider.reload()
+    await refreshNow(ctx)
 }
 
 /** Stable fingerprint of a discovered model set, for change detection. */
