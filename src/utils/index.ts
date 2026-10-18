@@ -6,6 +6,7 @@ export {parseJsonc, stripJsonComments} from './jsonc'
 export {resolveContextSize, FALLBACK_CONTEXT_SIZE} from './resolve-context-size'
 export {parseLoadState, isReady, describeColdModel} from './model-load-state'
 export type {ModelLoadState} from './model-load-state'
+export {extractModelPath, findUnloadableModels, isUnloadable} from './unloadable-models'
 
 // Categorize models by type
 export function categorizeModel(modelId: string): 'chat' | 'embedding' | 'unknown' {

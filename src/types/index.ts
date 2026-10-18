@@ -23,6 +23,21 @@ export interface LlamaCppModelStatus {
     preset?: string
 }
 
+/**
+ * A `llama-server` route whose weights cannot actually be loaded.
+ *
+ * Router mode can advertise a preset whose `--model` path no longer exists. The
+ * server does not filter these out: `/models` lists the model and
+ * `/props?model=` answers HTTP 500 `failed to load`. Advertising such a model
+ * in the catalog offers the user a selection that can only fail, so it is
+ * detected up front and excluded instead.
+ */
+export interface LlamaCppUnloadableModel {
+    model: LlamaCppModel
+    /** The `--model` path the server will try to open, when one can be read. */
+    modelPath?: string
+}
+
 export interface LlamaCppModel {
     id: string
     object: string

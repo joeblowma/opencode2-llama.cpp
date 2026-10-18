@@ -8,6 +8,7 @@ OpenCode V2 plugin for enhanced llama.cpp support with auto-detection, dynamic m
 
 - **Auto-detection**: Automatically detects a llama.cpp server running on common ports (1234, 9931, 8080, 11434)
 - **Dynamic Model Discovery**: Queries llama.cpp's `/v1/models` endpoint and registers discovered models into the OpenCode catalog (V2 API)
+- **Broken-Model Exclusion**: Router mode advertises presets whose `--model` weights are no longer on disk, and the server does not filter them — `/models` lists them and `/props` answers HTTP 500 `failed to load`. The plugin checks each advertised `--model` path locally and excludes the ones that are provably missing, so you are never offered a selection that cannot serve. The check is a local `fs` stat (no request, so it cannot trigger an autoload) and is deliberately conservative: anything it cannot prove absent is kept
 - **Enriched Model Metadata**:
   - Human-readable display names, preferring the name provided by the API (e.g., "Qwen3 30B A3B" instead of "qwen/qwen3-30b-a3b")
   - Context limit from `context_length` / `context_window`, falling back to
@@ -19,7 +20,7 @@ OpenCode V2 plugin for enhanced llama.cpp support with auto-detection, dynamic m
   - Input/output modalities, preferring the server's declared
     `architecture.input_modalities` / `output_modalities` over name-based guessing,
     with embedding models classified accordingly
-- **Model Validation**: A session context hook verifies that the selected model is actually loaded on the server (with retry/backoff) and adds a system warning to the prompt if it is not
+- **Model Validation**: A session context hook verifies that the selected model is actually loaded on the server (with retry/backoff) and adds a system warning to the prompt if it is not. The warning distinguishes a model that is *currently loading* (this request will wait) from one that is *cold* (this request will trigger a load first), since the remedy differs
 - **Tool-Calling Detection**: llama.cpp has no static capability field — function calling depends on the chat template plus `--jinja`. For the model you are actually using, the plugin resolves this from `chat_template_caps` in `/props` and enables tools in the catalog. It probes **only models already loaded**, because merely requesting `/props?model=` autoloads a model and aborting the fetch does not cancel that server-side load. Results are cached per model, and a confirmed `false` never overrides a value you set yourself
 - **Periodic Refresh**: Re-discovers models every 60 seconds and reloads the catalog
 - **Health Check Monitoring**: Verifies the llama.cpp server is accessible before attempting operations
@@ -193,6 +194,20 @@ Result: plugin setup looks good.
 
 It reads `.json` and `.jsonc` config (comments and trailing commas included) and exits non-zero
 when no server is reachable, so it works in CI or a pre-commit hook.
+
+### Refreshing the catalog
+
+Models are re-discovered every 60 seconds, and the catalog reloads only when the discovered set
+actually changed — so a restart or shutdown of `llama-server` is picked up within a minute, and
+a server you start *after* OpenCode is found by the same sweep.
+
+There is deliberately no trigger on OpenCode's `/models` command: it selects a model within the
+current catalog, it does not change what llama.cpp has available, and none of the TUI events
+(`tui.command.execute`, `tui.session.select`, …) fire on it. Polling is the honest mechanism for
+data that lives in another process.
+
+If you have just changed `llama-server` presets and want to skip the wait, run `pnpm run doctor`
+to see what the server currently reports.
 
 ### Debug logging
 

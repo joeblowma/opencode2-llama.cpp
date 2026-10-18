@@ -15,6 +15,7 @@ import {existsSync, readFileSync} from 'fs'
 import {join} from 'path'
 import {parseJsonc} from '../src/utils/jsonc'
 import {resolveContextSize, FALLBACK_CONTEXT_SIZE} from '../src/utils/resolve-context-size'
+import {findUnloadableModels} from '../src/utils/unloadable-models'
 import {
     DEFAULT_LLAMA_CPP_PORTS,
     autoDetectLlamaCpp,
@@ -96,28 +97,42 @@ async function main() {
     }
 
     try {
-        const models = await discoverLlamaCppModels(baseURL)
-        console.log(`models:  ${models.length} discovered`)
-        for (const model of models.slice(0, 10)) {
+        const discovered = await discoverLlamaCppModels(baseURL)
+
+        // Same filter the plugin applies, so this lists what the catalog will
+        // actually contain rather than what the server advertises.
+        const {loadable, unloadable} = await findUnloadableModels(discovered)
+
+        console.log(`models:  ${loadable.length} usable`)
+        for (const model of loadable.slice(0, 10)) {
             // Same resolution the plugin applies, so this reflects what the
             // catalog will actually advertise rather than just the API fields.
             const ctx = resolveContextSize(model)
             const loaded = model.status?.value === 'loaded'
             console.log(`  - ${model.id}  (ctx ${ctx ?? '?'}${loaded ? ', loaded' : ''})`)
         }
-        if (models.length > 10) console.log(`  ... and ${models.length - 10} more`)
+        if (loadable.length > 10) console.log(`  ... and ${loadable.length - 10} more`)
+
+        if (unloadable.length > 0) {
+            console.log(`\n! ${unloadable.length} advertised model(s) have missing weights and are hidden:`)
+            for (const {model, modelPath} of unloadable) {
+                console.log(`    ${model.id}`)
+                console.log(`      missing: ${modelPath}`)
+            }
+            console.log('  Fix the --model path in the preset, or remove the preset.')
+        }
 
         // Models with no reported context fall back to the conservative
         // default rather than the SDK's 200k, which would over-report and
         // cause silent KV-cache spill into system RAM.
-        const unresolved = models.filter((m) => resolveContextSize(m) === undefined)
+        const unresolved = loadable.filter((m) => resolveContextSize(m) === undefined)
         if (unresolved.length > 0) {
             console.log(`\n! ${unresolved.length} model(s) report no context size;`)
             for (const m of unresolved) console.log(`    ${m.id}`)
             console.log(`  They will advertise ${FALLBACK_CONTEXT_SIZE} (the fallback), not 200k.`)
             console.log('  Set --ctx-size / -c on the server, or pass a fallbackContext option.')
         } else {
-            console.log(`\nall ${models.length} models report a context size (no fallback needed)`)
+            console.log(`\nall ${loadable.length} usable models report a context size (no fallback needed)`)
         }
     } catch (error) {
         console.log(`models:  discovery failed: ${error instanceof Error ? error.message : error}`)

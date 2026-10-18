@@ -5,6 +5,7 @@ import {join} from 'path'
 import {modelStatusCache} from '../cache'
 import {categorizeModel, formatModelName, parseJsonc, resolveContextSize} from '../utils'
 import {autoDetectLlamaCpp, checkLlamaCppHealth, DEFAULT_LLAMA_CPP_PORTS, discoverLlamaCppModels, normalizeBaseURL} from '../utils/llama-cpp-api'
+import {findUnloadableModels} from '../utils/unloadable-models'
 import type {LlamaCppModel} from '../types'
 import {log} from '../utils/log'
 import {getFallbackContext, getLlamaBaseURL, getLlamaState, setFallbackContext, setLlamaBaseURL, setLlamaModels} from './llama-state'
@@ -320,9 +321,9 @@ function readOptions(ctx: Plugin.Context): {baseURL?: string; ports: readonly nu
  * catalog.
  */
 async function discoverModels(baseURL: string): Promise<void> {
-    let models: LlamaCppModel[]
+    let discovered: LlamaCppModel[]
     try {
-        models = await discoverLlamaCppModels(baseURL)
+        discovered = await discoverLlamaCppModels(baseURL)
     } catch (error) {
         log.warn('Model discovery failed', {
             error: error instanceof Error ? error.message : String(error),
@@ -330,13 +331,33 @@ async function discoverModels(baseURL: string): Promise<void> {
         return
     }
 
-    if (models.length === 0) {
+    if (discovered.length === 0) {
         log.warn('No models found in llama.cpp')
         return
     }
 
+    // Drop routes whose weights are gone. Filtering here rather than in the
+    // catalog transform keeps that callback synchronous, and means the snapshot
+    // the session hook reads never contains a model that cannot load.
+    const {loadable, unloadable} = await findUnloadableModels(discovered)
+
+    for (const {model, modelPath} of unloadable) {
+        log.warn('Excluding model with missing weights', {model: model.id, modelPath})
+    }
+
+    const models = loadable
+
+    if (models.length === 0) {
+        // Every advertised route is broken. Keep whatever was already known
+        // rather than emptying the catalog on a bad sweep.
+        log.warn('All discovered models have missing weights; keeping previous catalog')
+        return
+    }
+
     setLlamaModels(models)
-    log.info(`Discovered ${models.length} models from llama.cpp`)
+    log.info(`Discovered ${models.length} models from llama.cpp`, {
+        hidden: unloadable.length,
+    })
 
     // Warm the cache so the first request does not pay for a redundant fetch.
     try {
