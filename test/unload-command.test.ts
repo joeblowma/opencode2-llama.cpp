@@ -231,7 +231,7 @@ describe('performUnload', () => {
 
 describe('describeUnload', () => {
     it('confirms an unload', () => {
-        expect(describeUnload({kind: 'unloaded', model: 'a'})).toContain('unloaded a')
+        expect(describeUnload({kind: 'unloaded', model: 'a'})).toMatch(/unloaded a/i)
     })
 
     it('says nothing is loaded when the list is empty', () => {
@@ -244,7 +244,7 @@ describe('describeUnload', () => {
 
     it('explains why it refused the active model', () => {
         const text = describeUnload({kind: 'refused-active', model: 'a'})
-        expect(text).toContain('refusing')
+        expect(text).toMatch(/refusing/i)
         expect(text).toMatch(/current request/i)
         expect(text).toMatch(/switch models/i)
     })

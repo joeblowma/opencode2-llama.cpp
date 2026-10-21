@@ -36,6 +36,17 @@ OpenCode V2 plugin for enhanced llama.cpp support with auto-detection, dynamic m
 pnpm add opencode-plugin-llama.cpp
 ```
 
+Then register the TUI half in `~/.config/opencode/tui.json` so commands can show toasts:
+
+```json
+{
+  "plugin": ["node_modules/opencode-plugin-llama.cpp/opencode2-tui-plugin"]
+}
+```
+
+This step is optional — without it everything still works and command results go to the log
+instead of a popup.
+
 ## Usage
 
 Add the plugin to your `opencode.json`:
@@ -220,10 +231,22 @@ then reports one of: catalog updated (with the model count), no change, server n
 (models from the last good scan are retained), or no server found. Or run `pnpm run doctor` to
 see what the server currently reports without touching the catalog at all.
 
-Both commands log their result to the OpenCode log. They deliberately do **not** print into the
-conversation: a plugin command has no output channel to the interface, and the workaround —
-injecting a synthetic session message — would put status text into model-visible history and
-steer the running turn. See [`docs/tui-output.md`](docs/tui-output.md).
+Both commands report their result as a **toast** in the TUI, and in the log as a fallback.
+
+Server and TUI plugins are different processes, so showing a toast needs two halves: the server
+plugin owns discovery and the catalog, the TUI plugin owns the UI, and an RPC bridge joins them.
+Because of that, the TUI half has to be registered separately in
+`~/.config/opencode/tui.json`:
+
+```json
+{
+  "plugin": ["<path>/opencode2-llama.cpp/opencode2-tui-plugin"]
+}
+```
+
+Without it the commands still work; results just go to the log instead of a popup. See
+[`docs/tui-output.md`](docs/tui-output.md) for why the obvious alternative
+(`session.synthetic`) is wrong.
 
 ### Freeing VRAM
 

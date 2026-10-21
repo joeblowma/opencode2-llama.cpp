@@ -43,7 +43,44 @@ text still ends up in history.
 **Rule: never use `session.synthetic` for status output.** It is for content the user intends
 the model to see.
 
-## The correct fix: a TUI plugin
+## What this repository does
+
+Implemented. The package ships both halves:
+
+| Piece | File | Role |
+| ----- | ---- | ---- |
+| Wire contract | `src/rpc/llamacpp.ts` | RPC methods + `notified` event, shared by both halves |
+| Server bridge | `src/plugin/rpc-bridge.ts` | Registers the RPC, emits results after each command |
+| Commands | `src/plugin/refresh-command.ts`, `unload-command.ts` | Server-side; report through the bridge |
+| TUI half | `src/tui.ts` | Subscribes to `notified`, shows a toast |
+| Loader shim | `opencode2-tui-plugin/` | Points the TUI resolver at `src/tui.ts` |
+
+The command handlers and the RPC methods call the **same** functions, so a refresh triggered
+either way produces identical behaviour and identical wording — asserted by a test.
+
+## Setting it up
+
+The server plugin is already registered in `opencode.jsonc`. The TUI half needs its own entry in
+`~/.config/opencode/tui.json` (note: `plugin`, not `plugins`):
+
+```json
+{
+  "plugin": [
+    "U:\\_sidelined_projects\\_ai_junk\\opencode2-llama.cpp\\opencode2-tui-plugin"
+  ]
+}
+```
+
+Without this, the commands still work — their result just goes to the log instead of a toast.
+
+## Why the deep import
+
+`src/tui.ts` imports from `@opencode/plugin/tui/plugin` rather than the `@opencode/plugin/tui`
+barrel. The barrel re-exports `solid.js`, which drags `solid-js` into the TUI load path; the
+plugin uses no JSX and `ctx.ui.toast` is a plain method call, so that dependency would be pure
+start-up cost.
+
+## The correct fix in general: a TUI plugin
 
 OpenCode has a second plugin flavour, `@opencode/plugin/tui`, which runs in the TUI process
 and exposes UI primitives including toasts:

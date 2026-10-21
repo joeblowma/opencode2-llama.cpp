@@ -8,3 +8,4 @@ opencode-debug.log
 .cache/
 coverage/
 /.idea/
+/.codegraph

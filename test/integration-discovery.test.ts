@@ -342,7 +342,7 @@ describe('describeRefresh', () => {
 
     it('reports no change distinctly from a failure', () => {
         const text = describeRefresh({outcome: 'unchanged', baseURL: 'http://localhost:9931', count: 17})
-        expect(text).toContain('no change')
+        expect(text).toMatch(/no change/i)
         expect(text).not.toMatch(/error|failed/i)
     })
 
@@ -356,7 +356,7 @@ describe('describeRefresh', () => {
 
     it('tells the user what to do when no server is found', () => {
         const text = describeRefresh({outcome: 'no-server'})
-        expect(text).toContain('no server found')
+        expect(text).toMatch(/no server found/i)
         expect(text).toMatch(/start one/i)
     })
 })

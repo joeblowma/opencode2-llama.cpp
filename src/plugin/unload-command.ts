@@ -3,6 +3,7 @@ import {getActiveModel, getLlamaBaseURL, getLlamaState} from './llama-state'
 import {isReady} from '../utils/model-load-state'
 import {unloadLlamaCppModel} from '../utils/llama-cpp-api'
 import {report} from './notify'
+import type {RpcBridge} from './rpc-bridge'
 import {log} from '../utils/log'
 
 const COMMAND_NAME = 'llamacpp-unload'
@@ -92,26 +93,32 @@ export async function performUnload(requested: string | undefined): Promise<Unlo
     return {kind: 'unloaded', model: target.id}
 }
 
+/**
+ * Turn an unload outcome into one line a user can act on.
+ *
+ * No `llama.cpp:` prefix: the logger adds `[opencode-llama-cpp]` and the toast
+ * carries a `llama.cpp` title, so a prefix here would be shown twice.
+ */
 export function describeUnload(outcome: UnloadOutcome): string {
     switch (outcome.kind) {
         case 'listed':
             return outcome.loaded.length === 0
-                ? 'llama.cpp: nothing is currently loaded.'
-                : `llama.cpp: loaded now — ${outcome.loaded.join(', ')}`
+                ? 'Nothing is currently loaded.'
+                : `Loaded now — ${outcome.loaded.join(', ')}`
         case 'unloaded':
-            return `llama.cpp: unloaded ${outcome.model} (VRAM freed)`
+            return `Unloaded ${outcome.model} (VRAM freed)`
         case 'refused-active':
-            return `llama.cpp: refusing to unload ${outcome.model} — it is the model carrying your current request. Switch models first, then unload it.`
+            return `Refusing to unload ${outcome.model} — it is the model carrying your current request. Switch models first, then unload it.`
         case 'not-loaded':
-            return `llama.cpp: ${outcome.model} was already unloaded.`
+            return `${outcome.model} was already unloaded.`
         case 'unknown-model':
-            return `llama.cpp: no model matches "${outcome.requested}". Run /llamacpp-unload on its own to list loaded models.`
+            return `No model matches "${outcome.requested}". Run /llamacpp-unload on its own to list loaded models.`
         case 'ambiguous':
-            return `llama.cpp: "${outcome.requested}" matches ${outcome.candidates.length} models — use more of the name: ${outcome.candidates.slice(0, 5).join(', ')}`
+            return `"${outcome.requested}" matches ${outcome.candidates.length} models — use more of the name: ${outcome.candidates.slice(0, 5).join(', ')}`
         case 'failed':
-            return `llama.cpp: could not unload ${outcome.model} — ${outcome.error}`
+            return `Could not unload ${outcome.model} — ${outcome.error}`
         case 'no-server':
-            return 'llama.cpp: no server found.'
+            return 'No server found.'
     }
 }
 
@@ -122,23 +129,26 @@ export function describeUnload(outcome: UnloadOutcome): string {
  * model: weights stay resident until something evicts them, so a stale load can
  * hold gigabytes with no error anywhere.
  */
-export async function createUnloadCommand(ctx: Plugin.Context): Promise<(() => Promise<void>) | void> {
+export async function createUnloadCommand(
+    ctx: Plugin.Context,
+    bridge?: RpcBridge,
+): Promise<(() => Promise<void>) | void> {
     try {
         const registration = await ctx.command.transform((editor) => {
             editor.add({
                 name: COMMAND_NAME,
                 description: COMMAND_DESCRIPTION,
                 execute: async (input) => {
-                    const outcome = await performUnload(parseUnloadTarget(input?.prompt?.text))
-                    const message = describeUnload(outcome)
+                    const target = parseUnloadTarget(input?.prompt?.text)
 
-                    const level = outcome.kind === 'unloaded'
-                        || outcome.kind === 'listed'
-                        || outcome.kind === 'not-loaded'
-                        ? 'info'
-                        : 'warn'
+                    // Through the bridge when available, so the command and the
+                    // RPC method share one implementation and the TUI is told.
+                    const result = bridge
+                        ? await bridge.unload(target ?? '')
+                        : {text: describeUnload(await performUnload(target)), variant: 'info' as const}
 
-                    await report(message, level)
+                    await report(result.text, result.variant === 'info' ? 'info' : 'warn')
+                    await bridge?.notify(result)
                 },
             })
         })
