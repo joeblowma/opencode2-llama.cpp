@@ -6,13 +6,13 @@ import {LlamaCppRpc, type LlamaCppRpcResult} from './rpc/llamacpp'
  *
  * This runs in the TUI process, which is why it is a separate plugin at all. A
  * server plugin has no `ui` domain, and its command output has no channel to
- * the interface — the only supported way to show a user something from the
+ * the interface - the only supported way to show a user something from the
  * server is to have a TUI plugin listening for it.
  *
  * Deliberately no Solid JSX: `ctx.ui.toast` is a plain method call, so pulling
  * in a reactive runtime would cost start-up time for no benefit. That is also
  * why this imports `@opencode/plugin/tui/plugin` rather than the
- * `@opencode/plugin/tui` barrel — the barrel re-exports `solid.js`, which would
+ * `@opencode/plugin/tui` barrel - the barrel re-exports `solid.js`, which would
  * drag `solid-js` into the load path for no benefit.
  */
 
@@ -36,19 +36,74 @@ export default define({
     setup(ctx) {
         const client = ctx.client.rpc(LlamaCppRpc)
 
-        const unsubscribe = client.events.on('notified', (event) => {
-            const data = event?.data as LlamaCppRpcResult | undefined
-            if (!data?.text) return
+        const showToast = (result: LlamaCppRpcResult | undefined) => {
+            if (!result?.text) return
 
             ctx.ui.toast.show({
                 title: TITLE,
-                message: data.text,
-                variant: toToastVariant(data.variant),
+                message: result.text,
+                variant: toToastVariant(result.variant),
                 // Long enough to read a model name, short enough not to stack up
                 // if several refreshes land in a row.
                 duration: 5000,
             })
+        }
+
+        const unsubscribe = client.events.on('notified', (event) => {
+            const data = event?.data as LlamaCppRpcResult | undefined
+            showToast(data)
         })
+
+        // Register the slash commands in the TUI process itself, so issuing
+        // `/llamacpp-refresh` or `/llamacpp-unload` actually runs something and
+        // surfaces a toast even when no server-side command event reaches us.
+        if (ctx.keymap) {
+            ctx.keymap.layer(() => ({
+            mode: 'global',
+            commands: [
+                {
+                    id: 'llamacpp-refresh',
+                    title: 'llama.cpp refresh',
+                    description: 'Re-scan the llama.cpp server now instead of waiting for the 60s timer',
+                    group: 'llama.cpp',
+                    palette: true,
+                    slash: {name: 'llamacpp-refresh'},
+                    run: async () => {
+                        try {
+                            showToast(await client.refresh({}) as LlamaCppRpcResult)
+                        } catch (error) {
+                            ctx.ui.toast.show({
+                                title: TITLE,
+                                message: String(error),
+                                variant: 'error',
+                                duration: 5000,
+                            })
+                        }
+                    },
+                },
+                {
+                    id: 'llamacpp-unload',
+                    title: 'llama.cpp unload',
+                    description: 'Unload a model from llama.cpp to free VRAM. With no argument, lists what is loaded.',
+                    group: 'llama.cpp',
+                    palette: true,
+                    slash: {name: 'llamacpp-unload', arguments: true},
+                    run: async (input) => {
+                        try {
+                            showToast(await client.unload({model: (input ?? '').trim()}) as LlamaCppRpcResult)
+                        } catch (error) {
+                            ctx.ui.toast.show({
+                                title: TITLE,
+                                message: String(error),
+                                variant: 'error',
+                                duration: 5000,
+                            })
+                        }
+                    },
+                },
+            ],
+        }))
+        }
 
         return async () => {
             unsubscribe()
